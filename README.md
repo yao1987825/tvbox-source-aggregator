@@ -13,6 +13,8 @@
 - **管理后台** — 网页端添加/删除源，触发刷新
 - **定时更新** — 每天自动重新聚合，客户端无感知
 - **容错设计** — 聚合失败时保留上次有效缓存
+- **直播频道级合并** — 自动下载/解析/去重 m3u,按组/频道输出
+- **多端点兼容** — JSON Native / DIYP TXT / **M3U 播放列表** 三种格式并行,适配所有 TVBox fork
 
 ---
 
@@ -173,16 +175,27 @@ Workers 默认的 `*.workers.dev` 域名在部分网络环境下不可直接访�
 http://你的地址:5678/
 ```
 
+主配置 `/` 自带 hybrid 直播:
+- `[0]` 是 `type: 0` 的 URL 指针 → 自动从 `/live.m3u` 下载
+- `[1..]` 是 Native inline 分组(老 fork 直接渲染)
+
+如果你的 TVBox fork 在主配置里看不到直播,把 `/live.m3u` 单独加到「自定义直播源」即可。
+
 ### 端点说明
 
-| 端点 | 方法 | 说明 |
-|------|------|------|
-| `/` | GET | TVBox 配置 JSON（客户端填这个地址） |
-| `/status` | GET | 监控仪表盘页面 |
-| `/status-data` | GET | 状态数据 JSON |
-| `/admin` | GET | 管理后台（密码保护） |
-| `/admin/sources` | GET/POST/DELETE | 源管理 API（密码保护） |
-| `/refresh` | POST | 手动触发聚合刷新 |
+| 端点 | 方法 | Content-Type | 说明 |
+|------|------|--------------|------|
+| `/` | GET | application/json | **TVBox 主配置**(含站点 + 解析 + hybrid 直播) |
+| `/live.m3u` | GET | audio/x-mpegurl | **标准 M3U 播放列表**,所有 TVBox fork 通吃 |
+| `/live.json` | GET | application/json | 仅直播 JSON(Native) |
+| `/live-config` | GET | text/plain | 仅直播 TXT(DIYP, `#genre#` 格式) |
+| `/index.json` | GET | application/json | 同 `/`,带 `attachment` 下载头 |
+| `/status` | GET | text/html | 监控仪表盘页面 |
+| `/status-data` | GET | application/json | 状态数据 JSON |
+| `/admin` | GET | text/html | 管理后台(密码保护) |
+| `/admin/sources` | GET/POST/DELETE | application/json | 源管理 API(密码保护) |
+| `/admin/lives` | GET/POST/DELETE | application/json | 直播源管理 API(密码保护) |
+| `/refresh` | POST | application/json | 手动触发聚合刷新(Bearer token) |
 
 ---
 
@@ -243,12 +256,31 @@ echo "your-api-key" | npx wrangler secret put ZBAPE_API_KEY
 |------|------|--------|
 | `ADMIN_TOKEN` | 管理后台密码（必填） | - |
 | `PORT` | 服务端口（Docker/本地） | `5678` |
+| `BASE_URL` | 外部访问地址,Docker 必填,供 JAR/图片代理改写 | `http://localhost:5678` |
 | `CRON_SCHEDULE` | 定时聚合 Cron（UTC） | `0 5 * * *` |
 | `ZBAPE_API_KEY` | zbape.com 测速 API 密钥 | - |
-| `REFRESH_TOKEN` | 刷新接口独立 Token | - |
-| `SPEED_TIMEOUT_MS` | 源延迟阈值 | `5000` |
-| `FETCH_TIMEOUT_MS` | fetch 配置超时 | `5000` |
+| `REFRESH_TOKEN` | 刷新接口独立 Token(留空 = 用 ADMIN_TOKEN) | - |
+| `SPEED_TIMEOUT_MS` | 源延迟阈值(测速筛选) | `5000` |
+| `SITE_TIMEOUT_MS` | 站点 API 测速超时 | `3000` |
+| `FETCH_TIMEOUT_MS` | fetch 配置超时(**代理链路建议 10000~15000**) | `10000` |
+| `SCRAPE_SOURCE_URL` | 自动抓取源列表 URL(萌芽插件) | - |
+| `MACCMS_API_URL` / `MACCMS_AES_KEY` / `MACCMS_AES_IV` | MacCMS 资源站配置(三个都要填才启用) | - |
 | `DATA_DIR` | 数据存储目录（Docker/本地） | `./data` |
+
+> 想要走代理(SOCKS5/HTTP)抓 GitHub 源的:`SOCKS_PROXY=socks5://host:port` 或 `HTTP_PROXY=http://host:port` 在 `.env` 设置; 当前版本(2.1.2) 的 fetcher 直连优先,如需 SOCKS 集成需手写 undici Dispatcher,参见 `docs/2026-10-11-LAN部署与TVBox直播兼容.md`。
+
+---
+
+## 局域网（Docker / NAS）部署进阶
+
+适合自家 NAS、Linux 服务器跑,局域网内多设备共享。完整实战见:[`docs/2026-10-11-LAN部署与TVBox直播兼容.md`](docs/2026-10-11-LAN部署与TVBox直播兼容.md),主要差异点:
+
+- **网络受限**(墙内/局域网): 源用 jsDelivr CDN,不要用 `raw.githubusercontent.com` 或 `gh-proxy.com`
+- **TVBox fork 老**: 主配置填 `http://LAN-IP:5678/` 不显示直播,把 `/live.m3u` 单独加为「自定义直播源」
+- **`BASE_URL` 必填**: Docker 容器拿不到宿主机 IP,必须设 `BASE_URL=http://192.168.x.x:5678` 才能正确处理 JAR/图片代理路径
+- **fetch 超时**: `FETCH_TIMEOUT_MS=10000` 起,代理链路给 15000
+
+---
 
 ## License
 

@@ -1,5 +1,24 @@
 # Changelog
 
+## v2.1.2 (2026-10-11)
+
+### Features
+
+- 新增 `GET /live.m3u` 端点 — 输出标准 M3U 播放列表（5110 行），作为所有 TVBox fork 通用的直播入口。从 `KV_CHANNEL_MERGED_TREE` 读取合并树，不依赖 `merged.lives`。
+- 主配置 `lives` 字段改为 hybrid：第一条 `{name, type:0, url:'{{BASE_URL}}/live.m3u'}` 是 FongMi URL 指针（让能识别 URL 的 fork 自动下载 m3u），之后追加 Native inline `[group, channels]` 数组（让直接渲染分组的老 fork 拿到内容）。
+
+### Fixes
+
+- `DEFAULT_FETCH_TIMEOUT_MS` 5s → 10s；`.env.example` 注释提示代理链路建议 10000–15000ms。
+- `src/core/live-merger.ts` 新增 `stripEmoji()`，自动去掉源名/组名前缀里的 emoji 和「」全角括号，避免老 fork 解析失败回落到 "default group"。
+- 每个 channel 同时输出 `urls: string[]`（新版 fork）和 `url: "url1#url2"`（老 fork）的双格式兜底字段；覆盖 `separatedMergeLives` / `mergeLivesToNative` / `fetchAndParseLiveUrls` 三处输出。
+- 路由 `GET /live.m3u` 优先从 `KV_CHANNEL_MERGED_TREE` 读，不再要求 `KV_MERGED_CONFIG.lives` 是 Native 格式（兼容 FongMi URL 指针形式的 `merged.lives`）。
+- 文档：新增 `docs/2026-10-11-LAN部署与TVBox直播兼容.md`，覆盖 LAN 部署实操、jsDelivr 源替换、TVBox 直播兼容性故障定位。`README.md` 补充新端点表 + LAN 部署提示。
+
+### Notes
+
+- 本次实验过 SOCKS5 代理集成（`socks-proxy-agent@8 + undici@6`），因 undici Dispatcher 接口兼容性 bug（`agent.dispatch is not a function`）放弃，所有相关代码已 revert，仓库无残留。
+
 ## v2.1.1 (2026-06-10)
 
 ### Fixes
